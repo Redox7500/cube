@@ -126,10 +126,13 @@ function normalizeVector(vector)
 
 function anglesFromMatrix(matrix)
 {
-    const y = -Math.asin(matrix[2][0]);
-    const x = Math.asin(matrix[2][1] / Math.cos(y));
-    const z = Math.acos(matrix[0][0] / Math.cos(y));
-    return [x, y, z];
+    // const y = Math.asin(-matrix[2][0]);
+    // const x = Math.asin(matrix[2][1] / Math.cos(y));
+    // const z = Math.acos(matrix[0][0] / Math.cos(y));
+    const y = Math.asin(-matrix[2][0]);
+    const z = Math.asin(matrix[2][1] / Math.cos(y));
+    const x = Math.asin(matrix[1][0] / Math.cos(y));
+    return [z, x, y];
 }
 
 function round(value, precision=1)
@@ -143,11 +146,17 @@ function roundRotationMatrix(matrix, precision=Math.PI / 2)
     return [[1, 0, 0], [0, 1, 0], [0, 0, 1]].reduce((sum, x, i) => math.multiply(sum, math.rotationMatrix(angles[i], x)), math.identity(3)._data).map((row) => row.map((value) => Math.round(value)));
 }
 
+function matrixFromAngles(angles)
+{
+    return [[1, 0, 0], [0, 1, 0], [0, 0, 1]].reduce((sum, x, i) => math.multiply(sum, math.rotationMatrix(angles[i] * Math.PI / 180, x)), math.identity(3)._data);
+}
+
+console.log(anglesFromMatrix(matrixFromAngles([-90, -90, 90])).map((x) => Math.round(x / Math.PI * 180)));
+
 function sortLayers()
 {
     layers = Array(6 * cubeSize).fill().map(() => []);
     let roundedMouseAngles = roundRotationMatrix(mouseAngles);
-    console.log(anglesFromMatrix(math.multiply(math.rotationMatrix(Math.PI / 2, [1, 0, 0]), math.rotationMatrix(Math.PI / 2, [0, 0, 1]))).map((x) => x * 180 / Math.PI));
     for (let sticker of stickers)
     {
         let stickerPos = sticker.position.map((position) => math.multiply(position, roundedMouseAngles));
