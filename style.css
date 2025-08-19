@@ -1,0 +1,20 @@
+html
+{
+    width:100%;
+    height:100%;
+}
+
+body
+{
+    font-family:"Google Sans Flex";
+    color:white;
+    background-color:black;
+    position:fixed;
+    margin:0;
+}
+
+@font-face
+{
+    font-family:"Google Sans Flex";
+    src:url(https://fonts.gstatic.com/s/googlesansflex/v5/t5sJIQcYNIWbFgDgAAzZ34auoVyXkJCOvp3SFWJbN5hF8Ju1x6sKCyp0l9sI40swNJwGpVd4AZzz0v6lJ4qFXNZhGjLvDSkV4USKMo6qQzwliVdHAy9jxTDHg_ugnAakpwGc-cxgUqDCIUI.woff2)format('woff2');
+}
