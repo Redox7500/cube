@@ -34,26 +34,6 @@ function clamp(x, min, max)
 document.onmousemove = (event) => {
     if (document.pointerLockElement)
     {
-        // mousePos = math.add(mousePos, [event.movementX, event.movementY]);
-        // console.log(mousePos);
-        // // mouseAngles = math.multiply(math.rotationMatrix(clamp(Math.asin(event.movementX / 100) / 1.65, -50, 50), [0, 1, 0]), math.rotationMatrix(clamp(Math.asin(-event.movementY / 100) / 1.65, -50, 50), [1, 0, 0]), mouseAngles);
-        // // mouseAngles = math.multiply(math.rotationMatrix(-event.movementX / 200, [0, 1, 0]), math.rotationMatrix(event.movementY / 200, [1, 0, 0]), mouseAngles);
-        // if (mousePos[0] ** 2 + mousePos[1] ** 2 > mouseDistance ** 2)
-        // {
-        //     let scale = mouseDistance ** 2 / (mousePos[0] ** 2 + mousePos[1] ** 2);
-        //     mousePos = math.divide(mousePos, scale);
-        // }
-        // let newMouseAxis = normalizeVector([mousePos[0], mousePos[1], (mouseDistance ** 2 - mousePos[0] ** 2 - mousePos[1] ** 2) ** 0.5]);
-        // mouseAngles = math.multiply(math.rotationMatrix(Math.acos(math.dot(mouseAxis, newMouseAxis)) * -4, math.cross(mouseAxis, newMouseAxis)), mouseAngles);
-        // mouseAxis = newMouseAxis;
-        // sortLayers();
-        // // mouseDistance = mouseX^2 + mouseY^2
-        // // -mouseX^2 - mouseY^2 + mouseDistance^2 = z^2
-        // // (mouseDistance^2 - mouseX^2 - mouseY^2)^0.5 = z
-
-        // // vcos(0)+(kxv)sin(0)+k(k•v)(1-cos(0))=vrot
-        // // (kxv)sin(0)+k(k•v)(1-cos(0))=vrot-vcos(0)
-        // // (kxv)+k(k•v)(tan(0/2))=(vrot-vcos(0))/(sin(0))
         mouseAngles = math.multiply(math.rotationMatrix(-event.movementX * rotationSensitivity / 10000, [0, 1, 0]), math.rotationMatrix(event.movementY * rotationSensitivity / 10000, [1, 0, 0]), mouseAngles);
         sortLayers();
     }
@@ -144,25 +124,6 @@ function normalizeVector(vector)
     return math.divide(vector, math.distance([0, 0, 0], vector));
 }
 
-// function anglesFromMatrix(matrix)
-// {
-//     let xAngle = Math.atan2(matrix[2][1], matrix[2][2]);
-//     let yAngle = Math.atan2(-matrix[2][0], (matrix[2][1] ** 2 + matrix[2][2] ** 2) ** 0.5);
-//     let zAngle = Math.atan2(matrix[1][0], matrix[0][0]);
-//     return [xAngle, yAngle, zAngle];
-// }
-
-// function anglesFromMatrix(matrix)
-// {
-//     let vector = math.multiply([1, 1, 1], matrix);
-//     let xAngle = Math.atan2(vector[1], vector[2]) + 45;
-//     let yAngle = Math.atan2(vector[0], vector[2]) + 45;
-//     let zAngle = Math.atan2(vector[0], vector[1]) + 45;
-//     return [xAngle, yAngle, zAngle];
-//     // bad somehow
-//     // https://gamedev.stackexchange.com/questions/50963/how-to-extract-euler-angles-from-transformation-matrix answered by Chris
-// }
-
 function anglesFromMatrix(matrix)
 {
     const y = -Math.asin(matrix[2][0]);
@@ -179,23 +140,13 @@ function round(value, precision=1)
 function roundRotationMatrix(matrix, precision=Math.PI / 2)
 {
     const angles = anglesFromMatrix(matrix).map((angle) => round(angle, precision=precision));
-    //return math.multiply(math.rotationMatrix(angles[0], [1, 0, 0]), math.rotationMatrix(angles[1], [0, 1, 0]), math.rotationMatrix(angles[2], [0, 0, 1])).map((row) => row.map((value) => Math.round(value)));
     return [[1, 0, 0], [0, 1, 0], [0, 0, 1]].reduce((sum, x, i) => math.multiply(sum, math.rotationMatrix(angles[i], x)), math.identity(3)._data).map((row) => row.map((value) => Math.round(value)));
 }
 
 function sortLayers()
 {
-    // let realLayerPos = layerPos.map((x) => {
-    //     x = math.multiply(mouseAngles, x);
-    //     let max = x.toSorted((a, b) => Math.abs(b) - Math.abs(a))[0];
-    //     return x.reduce((sum, y, i) => (y == max)? " +-".at(Math.sign(y)) + "xyz"[i]:sum, "");
-    // });
-    // newLayerPos.forEach((x, i) => {
-    //     adjustLayers[i] = realLayerPos.indexOf(x);
-    // });
     layers = Array(6 * cubeSize).fill().map(() => []);
     let roundedMouseAngles = roundRotationMatrix(mouseAngles);
-    // console.log(math.multiply([0, 0, 1], roundedMouseAngles)); // looking at face flat on angle do weird thing to y and z vector
     console.log(anglesFromMatrix(math.multiply(math.rotationMatrix(Math.PI / 2, [1, 0, 0]), math.rotationMatrix(Math.PI / 2, [0, 0, 1]))).map((x) => x * 180 / Math.PI));
     for (let sticker of stickers)
     {
@@ -215,9 +166,6 @@ function turnLayer(layer)
 
 function project(position)
 {
-    // let scale = fov / (fov - ((position[2][0] - Math.hypot(cubeSize / 2 * tileSize, cubeSize / 2 * tileSize)) + distance) / 50) * zoom;
-    // fov / (fov - (z + distance))
-    // let scale = 100 / (100 - (position[2][0] / 8));
     let scale = focalLength / (position[2] + distance) / zoom;
     return [position[0] * scale, position[1] * scale];
 }
@@ -246,29 +194,6 @@ class Sticker
         this.drawPos;
         this.color = color;
         this.avgZ;
-        // this.edgePos = this.position.map((x) => x.map((y) => y[0])).reduce((sum, x) => sum.map((y, j) => (Math.max(Math.abs(x[j]), Math.abs(y)) == Math.abs(x[j]))? x[j]:y), [0, 0, 0]);
-        // for (let i = 0; i < 3; i++)
-        // {
-        //     let positionAtAxis = this.position.map((x) => x[0][0]).toSorted((a, b) => Math.abs(b) - Math.abs(a));
-        //     if (Math.abs(positionAtAxis[0]) == Math.abs(positionAtAxis[1]))
-        //     {
-        //         this.edgePos[i] = positionAtAxis.slice(0, 3);
-        //     }
-        // }
-        // for (let i = 0; i < 3; i++)
-        // {
-        //     let outerLayer = newLayerPos.indexOf(" +-".at(Math.sign(this.edgePos[i])) + "xyz"[i]);
-        //     console.log(this.edgePos[i])
-        //     let layerIndex = Math.round(outerLayer + 6 * (Math.abs(layerPos[outerLayer][i] - this.edgePos[i]) / tileSize));
-        //     // console.log(outerLayer)
-        //     // console.log(layerIndex)
-        //     // if (layerIndex >= 3 * cubeSize)
-        //     // {
-        //     //     layerIndex %= 3 * cubeSize;
-        //     //     //layerIndex += -6 + ((layerIndex % 2 == 0)? 1:-1);
-        //     // }
-        //     layers[layerIndex].unshift(this);
-        // }
         let addToLayers = matchLayers(this.position);
         for (let i = 0; i < addToLayers.length; i++)
         {
@@ -289,7 +214,6 @@ class Sticker
     updateLayers(axis)
     {
         this.position = this.position.map((x) => math.rotate(x, changeAngle, axis));
-        // this.edgePos = this.position.reduce((sum, x) => sum.map((y, j) => (Math.max(Math.abs(x[j]), Math.abs(y)) == Math.abs(x[j]))? x[j]:y), [0, 0, 0]);
         for (let i = 0; i < layers.length; i++)
         {
             if (layers[i].includes(this))
@@ -297,17 +221,6 @@ class Sticker
                 layers[i].splice(layers[i].indexOf(this), 1);
             }
         }
-        // for (let i = 0; i < 3; i++)
-        // {
-        //     let outerLayer = newLayerPos.indexOf(" +-".at(Math.sign(this.edgePos[i])) + "xyz"[i]);
-        //     let layerIndex = Math.round(outerLayer + 6 * (Math.abs(layerPos[outerLayer][i] - this.edgePos[i]) / tileSize));
-        //     // if (layerIndex >= 3 * cubeSize)
-        //     // {
-        //     //     layerIndex %= 3 * cubeSize;
-        //     //     //layerIndex += -6 + ((layerIndex % 2 == 0)? 1:-1);
-        //     // }
-        //     layers[Math.round(layerIndex)].unshift(this)
-        // }
         let addToLayers = matchLayers(this.position);
         for (let i = 0; i < addToLayers.length; i++)
         {
