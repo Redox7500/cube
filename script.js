@@ -5,7 +5,7 @@ canvas.width = window.innerWidth;
 canvas.height = window.innerHeight;
 let colors = [];
 let mouseAngles = math.identity(3)._data;
-let cubeSize = 3;
+let cubeSize = 5;
 let tileSize = 100;
 let offset = tileSize * cubeSize / 2;
 let focalLength = 1000;
@@ -126,13 +126,19 @@ function normalizeVector(vector)
 
 function anglesFromMatrix(matrix)
 {
-    // const y = Math.asin(-matrix[2][0]);
-    // const x = Math.asin(matrix[2][1] / Math.cos(y));
-    // const z = Math.acos(matrix[0][0] / Math.cos(y));
-    const y = Math.asin(-matrix[2][0]);
-    const z = Math.asin(matrix[2][1] / Math.cos(y));
-    const x = Math.asin(matrix[1][0] / Math.cos(y));
-    return [z, x, y];
+    let x, y, z;
+    y = Math.asin(matrix[0][2]);
+    if (Math.abs(matrix[0][2]) < 0.9999999)
+    {
+        x = Math.atan2(-matrix[1][2], matrix[2][2]);
+        z = Math.atan2(-matrix[0][1], matrix[0][0]);
+    }
+    else
+    {
+        x = Math.atan2(matrix[2][1], matrix[1][1]);
+        z = 0;
+    }
+    return [x, y, z];
 }
 
 function round(value, precision=1)
@@ -150,8 +156,6 @@ function matrixFromAngles(angles)
 {
     return [[1, 0, 0], [0, 1, 0], [0, 0, 1]].reduce((sum, x, i) => math.multiply(sum, math.rotationMatrix(angles[i] * Math.PI / 180, x)), math.identity(3)._data);
 }
-
-console.log(anglesFromMatrix(matrixFromAngles([-90, -90, 90])).map((x) => Math.round(x / Math.PI * 180)));
 
 function sortLayers()
 {
@@ -179,20 +183,60 @@ function project(position)
     return [position[0] * scale, position[1] * scale];
 }
 
-function matchLayers(cornerPos)
+// function matchLayers(cornerPos)
+// {
+//     let ret = [];
+//     let edgePos = cornerPos.reduce((sum, x) => sum.map((y, j) => (Math.max(Math.abs(x[j]), Math.abs(y)) == Math.abs(x[j]))? x[j]:y), [0, 0, 0]);
+//     for (let i = 0; i < 3; i++)
+//     {
+//         let outerLayer = newLayerPos.indexOf(((Math.sign(edgePos[i]) > 0)? "+":"-") + "xyz"[i]);
+//         let innerLayers = Math.abs(layerPos[outerLayer][i] - edgePos[i]) / tileSize;
+//         let layerIndex1 = Math.round(outerLayer + 6 * innerLayers);
+//         let layerIndex2 = Math.round((outerLayer + ((outerLayer % 2 == 0)? 1:-1)) + 6 * ((cubeSize - 1) - innerLayers));
+//         ret.push(layerIndex1, layerIndex2);
+//     }
+//     return ret;
+// }
+
+function matchLayers(cornerPositions)
 {
     let ret = [];
-    let edgePos = cornerPos.reduce((sum, x) => sum.map((y, j) => (Math.max(Math.abs(x[j]), Math.abs(y)) == Math.abs(x[j]))? x[j]:y), [0, 0, 0]);
     for (let i = 0; i < 3; i++)
     {
-        let outerLayer = newLayerPos.indexOf(((Math.sign(edgePos[i]) > 0)? "+":"-") + "xyz"[i]);
-        let innerLayers = Math.abs(layerPos[outerLayer][i] - edgePos[i]) / tileSize;
-        let layerIndex1 = Math.round(outerLayer + 6 * innerLayers);
-        let layerIndex2 = Math.round((outerLayer + ((outerLayer % 2 == 0)? 1:-1)) + 6 * ((cubeSize - 1) - innerLayers));
-        ret.push(layerIndex1, layerIndex2);
+        //                                                               if position is more than previous maximum, return that, or just keep the current maximum
+        // const maxCoordinate = cornerPositions.reduce((currentMax, position) => ((Math.abs(position[i]) > Math.abs(currentMax))? position[i]:currentMax), 0);
+        const maxCoordinate = cornerPositions.sort((position1, position2) => position2[i] - position1[i])[0][i];
+        const distanceFromEdge = (tileSize * Math.floor(cubeSize / 2) + tileSize * 0.5 - Math.abs(maxCoordinate)) / tileSize;
+        // const distanceFromEdge = Math.floor(cubeSize / 2) + 0.5 - Math.abs(maxCoordinate) / tileSize;
+        let baseLayer1, baseLayer2;
+        if (Math.sign(maxCoordinate) != -1)
+        {
+            baseLayer1 = i * 2;
+            baseLayer2 = i * 2 + 1;
+        }
+        else
+        {
+            baseLayer1 = i * 2 + 1;
+            baseLayer2 = i * 2;
+        }
+        // if (baseLayer1 + distanceFromEdge * 6 >= layers.length)
+        // {
+        //     console.log(layers.length)
+        //     console.log(cornerPositions);
+        // }
+        // console.log(ret)
+        ret.push(Math.round(baseLayer1 + distanceFromEdge * 6));
+        // ret.push(baseLayer2 + (cubeSize - 1 - distanceFromEdge) * 6);
     }
     return ret;
 }
+
+console.log(matchLayers([
+    [tileSize * -0.5, tileSize * -0.5, tileSize * 1.5],
+    [tileSize * -0.5, tileSize * 0.5, tileSize * 1.5],
+    [tileSize * 0.5, tileSize * -0.5, tileSize * 1.5],
+    [tileSize * 0.5, tileSize * 0.5, tileSize * 1.5]
+]));
 
 class Sticker
 {
@@ -223,17 +267,16 @@ class Sticker
     updateLayers(axis)
     {
         this.position = this.position.map((x) => math.rotate(x, changeAngle, axis));
+        const addToLayers = matchLayers(this.position);
         for (let i = 0; i < layers.length; i++)
         {
             if (layers[i].includes(this))
             {
-                layers[i].splice(layers[i].indexOf(this), 1);
+                if (!(i in addToLayers))
+                {
+                    layers[i].splice(layers[i].indexOf(this), 1);
+                }
             }
-        }
-        let addToLayers = matchLayers(this.position);
-        for (let i = 0; i < addToLayers.length; i++)
-        {
-            layers[addToLayers[i]].unshift(this);
         }
     }
 }
