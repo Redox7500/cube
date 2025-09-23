@@ -5,7 +5,7 @@ canvas.width = window.innerWidth;
 canvas.height = window.innerHeight;
 let colors = [];
 let mouseAngles = math.identity(3)._data;
-let cubeSize = 5;
+let cubeSize = 3;
 let tileSize = 100;
 let offset = tileSize * cubeSize / 2;
 let focalLength = 1000;
@@ -161,11 +161,11 @@ function sortLayers()
 {
     layers = Array(6 * cubeSize).fill().map(() => []);
     let roundedMouseAngles = roundRotationMatrix(mouseAngles);
-    for (let sticker of stickers)
+    for (const sticker of stickers)
     {
-        let stickerPos = sticker.position.map((position) => math.multiply(position, roundedMouseAngles));
-        let addToLayers = matchLayers(stickerPos);
-        for (let addLayer of addToLayers)
+        const stickerPosition = sticker.cornerPositions.map((cornerPosition) => math.multiply(cornerPosition, roundedMouseAngles));
+        const addToLayers = matchLayers(stickerPosition);
+        for (const addLayer of addToLayers)
         {
             layers[addLayer].push(sticker);
         }
@@ -174,7 +174,7 @@ function sortLayers()
 
 function turnLayer(layer)
 {
-    layers[layer].forEach((x) => x.updateLayers(layerAxes[layer % 6]));
+    layers[layer].forEach((sticker) => sticker.rotate(changeAngle, layerAxes[layer % 6]));
 }
 
 function project(position)
@@ -200,33 +200,37 @@ function project(position)
 
 function matchLayers(cornerPositions)
 {
-    let ret = [];
+    const ret = [];
     for (let i = 0; i < 3; i++)
     {
         //                                                               if position is more than previous maximum, return that, or just keep the current maximum
         // const maxCoordinate = cornerPositions.reduce((currentMax, position) => ((Math.abs(position[i]) > Math.abs(currentMax))? position[i]:currentMax), 0);
-        const maxCoordinate = cornerPositions.sort((position1, position2) => position2[i] - position1[i])[0][i];
-        const distanceFromEdge = (tileSize * Math.floor(cubeSize / 2) + tileSize * 0.5 - Math.abs(maxCoordinate)) / tileSize;
+        const maxCoordinate = cornerPositions.toSorted((position1, position2) => Math.abs(position2[i]) - Math.abs(position1[i]))[0][i];
+        const distanceFromEdge = (tileSize * cubeSize / 2 - Math.abs(maxCoordinate)) / tileSize;
+        // distanceFromEdge = 0;
         // const distanceFromEdge = Math.floor(cubeSize / 2) + 0.5 - Math.abs(maxCoordinate) / tileSize;
-        let baseLayer1, baseLayer2;
-        if (Math.sign(maxCoordinate) != -1)
-        {
-            baseLayer1 = i * 2;
-            baseLayer2 = i * 2 + 1;
-        }
-        else
-        {
-            baseLayer1 = i * 2 + 1;
-            baseLayer2 = i * 2;
-        }
+        const outerLayer1 = newLayerPos.indexOf(((Math.sign(maxCoordinate) > 0)? "+":"-") + "xyz"[i]);
+        const outerLayer2 = newLayerPos.indexOf(((Math.sign(maxCoordinate) > 0)? "-":"+") + "xyz"[i]);
+        // let baseLayer1, baseLayer2;
+
+        // if (Math.sign(maxCoordinate) != -1)
+        // {
+        //     baseLayer1 = [1, 2, 0][i] * 2;
+        //     baseLayer2 = [1, 2, 0][i] * 2 + 1;
+        // }
+        // else
+        // {
+        //     baseLayer1 = [1, 2, 0][i] * 2 + 1;
+        //     baseLayer2 = [1, 2, 0][i] * 2;
+        // }
         // if (baseLayer1 + distanceFromEdge * 6 >= layers.length)
         // {
         //     console.log(layers.length)
         //     console.log(cornerPositions);
         // }
         // console.log(ret)
-        ret.push(Math.round(baseLayer1 + distanceFromEdge * 6));
-        // ret.push(baseLayer2 + (cubeSize - 1 - distanceFromEdge) * 6);
+        ret.push(Math.round(outerLayer1 + distanceFromEdge * 6));
+        // ret.push(Math.round(outerLayer2 + (cubeSize - 1 - distanceFromEdge) * 6));
     }
     return ret;
 }
@@ -240,44 +244,47 @@ console.log(matchLayers([
 
 class Sticker
 {
-    constructor(position, color)
+    constructor(cornerPositions, color)
     {
-        this.position = position;
-        this.rotatedPos = this.position.slice();
-        this.drawPos;
+        this.cornerPositions = cornerPositions;
         this.color = color;
-        this.avgZ;
-        let addToLayers = matchLayers(this.position);
-        for (let i = 0; i < addToLayers.length; i++)
-        {
-            layers[addToLayers[i]].unshift(this);
-        }
+        this.updateLayers();
     }
 
-    updatePos()
+    get rotatedCornerPositions()
     {
-        this.rotatedPos = this.position.map((x) => math.multiply(mouseAngles, x));
-        this.drawPos = this.rotatedPos.map((x) => project(x));
-        this.avgZ = 0;
-        this.rotatedPos.forEach((x) => {this.avgZ += parseFloat(x[2])});
+        return this.cornerPositions.map((cornerPosition) => math.multiply(mouseAngles, cornerPosition));
+    }
+
+    get drawingCornerPositions()
+    {
+        return this.rotatedCornerPositions.map((cornerPosition) => project(cornerPosition));
+    }
+
+    updatePosition()
+    {
+        this.averageZ = this.rotatedCornerPositions.reduce((sum, cornerPosition) => sum + cornerPosition[2], 0);
         toDraw.push(this);
-        toDraw.sort((a, b) => a.avgZ - b.avgZ);
     }
 
-    updateLayers(axis)
+    rotate(angle, axis)
     {
-        this.position = this.position.map((x) => math.rotate(x, changeAngle, axis));
-        const addToLayers = matchLayers(this.position);
-        for (let i = 0; i < layers.length; i++)
+        this.cornerPositions = this.cornerPositions.map((cornerPosition) => math.rotate(cornerPosition, angle, axis));
+        this.updateLayers();
+    }
+
+    updateLayers()
+    {
+        for (const layer of layers)
         {
-            if (layers[i].includes(this))
+            if (layer.includes(this))
             {
-                if (!(i in addToLayers))
-                {
-                    layers[i].splice(layers[i].indexOf(this), 1);
-                }
+                layer.splice(layer.indexOf(this), 1);
             }
         }
+        matchLayers(this.cornerPositions).forEach((matchedLayer) => {
+            layers[matchedLayer].unshift(this);
+        });
     }
 }
 
@@ -308,6 +315,26 @@ function scramble()
     changeAngle = Math.PI / 2;
 }
 
+function drawShape(positions, color=null, stroke=true)
+{
+    ctx.beginPath();
+    if (color)
+    {
+        ctx.fillStyle = color;
+    }
+    ctx.moveTo(positions[0][0], positions[0][1]);
+    for (const position of positions.toSpliced(0, 1))
+    {
+        ctx.lineTo(position[0], position[1]);
+    }
+    ctx.closePath();
+    ctx.fill();
+    if (stroke)
+    {
+        ctx.stroke();
+    }
+}
+
 createCube();
 
 function draw()
@@ -316,19 +343,12 @@ function draw()
     ctx.fillStyle = "black";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     toDraw = [];
-    stickers.forEach((x) => {x.updatePos()});
-    toDraw.reverse();
-    toDraw.forEach((x) => {
-        let cur = x.drawPos.map((x) => x.map((y, i) => y + center[i]));
-        ctx.beginPath();
-        ctx.fillStyle = x.color;
-        ctx.moveTo(cur[0][0], cur[0][1]);
-        ctx.lineTo(cur[1][0], cur[1][1]);
-        ctx.lineTo(cur[2][0], cur[2][1]);
-        ctx.lineTo(cur[3][0], cur[3][1]);
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
+    stickers.forEach((sticker) => {
+        sticker.updatePosition();
+    });
+    toDraw.sort((a, b) => b.averageZ - a.averageZ);
+    toDraw.forEach((sticker) => {
+        drawShape(sticker.drawingCornerPositions.map((cornerPosition) => math.add(cornerPosition, center)), sticker.color);
     });
     requestAnimationFrame(draw);
 }
