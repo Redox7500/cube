@@ -1,30 +1,34 @@
-let canvas = document.getElementById("canvas");
-let ctx = canvas.getContext("2d");
-ctx.strokeStyle = "black";
+const canvas = document.getElementById("canvas");
+const context = canvas.getContext("2d");
+context.strokeStyle = "black";
 canvas.width = window.innerWidth;
 canvas.height = window.innerHeight;
 let colors = [];
-let mouseAngles = math.identity(3)._data;
-let cubeSize = 3;
+let mouseRotation = [
+    [1, 0, 0],
+    [0, 1, 0],
+    [0, 0, 1]
+];
+let roundedMouseRotation = [
+    [1, 0, 0],
+    [0, 1, 0],
+    [0, 0, 1]
+];
+let cubeSize = 5;
 let tileSize = 100;
 let offset = tileSize * cubeSize / 2;
 let focalLength = 1000;
 let distance = 1100;
 let stickers = [];
 let layers = Array(6 * cubeSize).fill().map(() => []);
-let toDraw = [];
 let center = [canvas.width / 2, canvas.height / 2];
 let changeAngle = -Math.PI / 2;
 let numberKey = 0;
 let layerAxes = [[0, 0, 1], [0, 0, -1], [1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0]];
 let scrambleLengths = [0, 0, 10, 20];
 let zoom = 1;
-let layerPos = [[0, 0, offset], [0, 0, -offset], [offset, 0, 0], [-offset, 0, 0], [0, offset, 0], [0, -offset, 0]];
-let newLayerPos = layerPos.map((x) => x.reduce((sum, y, i) => (y != 0)? " +-".at(Math.sign(y)) + "xyz"[i]:sum, ""));
-let mouseDistance = 0;
-let mouseAxis = [0, 0, 0];
-let mousePos = [0, 0];
-let rotationSensitivity = 100;
+let mousePosition = [0, 0];
+let rotationSensitivity = 0.01;
 
 function clamp(x, min, max)
 {
@@ -34,12 +38,15 @@ function clamp(x, min, max)
 document.onmousemove = (event) => {
     if (document.pointerLockElement)
     {
-        mouseAngles = math.multiply(math.rotationMatrix(-event.movementX * rotationSensitivity / 10000, [0, 1, 0]), math.rotationMatrix(event.movementY * rotationSensitivity / 10000, [1, 0, 0]), mouseAngles);
+        // mouseRotation = math.multiply(math.rotationMatrix(-event.movementX * rotationSensitivity, [0, 1, 0]), math.rotationMatrix(event.movementY * rotationSensitivity, [1, 0, 0]), mouseRotation);
+        const yRotationMatrix = math.rotationMatrix(-event.movementX * rotationSensitivity, [0, 1, 0]);
+        const xRotationMatrix = math.rotationMatrix(event.movementY * rotationSensitivity, [1, 0, 0]);
+        mouseRotation = math.multiply(yRotationMatrix, xRotationMatrix, mouseRotation);
         sortLayers();
     }
     else
     {
-        mousePos = [event.clientX, event.clientY];
+        mousePosition = [event.clientX, event.clientY];
     }
 };
 document.onwheel = (event) => {
@@ -88,8 +95,6 @@ document.onkeydown = (event) => {
         case " ":
             if (!document.pointerLockElement)
             {
-                mouseDistance = ((mousePos[0] + canvas.width / 2) ** 2 + (mousePos[1] + canvas.height / 2) ** 2) ** 0.5;
-                mouseAxis = normalizeVector([mousePos[0], mousePos[1], 0]);
                 canvas.requestPointerLock();
             }
             else
@@ -121,25 +126,161 @@ document.onkeyup = (event) => {
 
 function normalizeVector(vector)
 {
-    return math.divide(vector, math.distance([0, 0, 0], vector));
+    return math.divide(vector, math.norm(vector));
 }
 
-function anglesFromMatrix(matrix)
+// function multiplyRotationMatrix(matrix, vector)
+// {
+//     const norm = math.norm(vector);
+//     let ret = math.multiply(matrix, vector);
+//     ret = math.multiply(norm / math.norm(ret), ret);
+//     return ret;
+// }
+
+function multiplyRotationMatrix(matrix, vector)
 {
-    let x, y, z;
-    y = Math.asin(matrix[0][2]);
-    if (Math.abs(matrix[0][2]) < 0.9999999)
-    {
-        x = Math.atan2(-matrix[1][2], matrix[2][2]);
-        z = Math.atan2(-matrix[0][1], matrix[0][0]);
-    }
-    else
-    {
-        x = Math.atan2(matrix[2][1], matrix[1][1]);
-        z = 0;
-    }
-    return [x, y, z];
+    return math.multiply(matrix, vector);
 }
+
+// function rotationMatrixToAngles(matrix)
+// {
+//     const sy = Math.sqrt(matrix[0][0] ** 2 + matrix[1][0] ** 2);
+
+//     let x, y, z;
+//     if (sy > 1e-6)
+//     {
+//         x = Math.atan2(matrix[2][1], matrix[2][2]);
+//         y = Math.atan2(-matrix[2][0], sy);
+//         z = Math.atan2(matrix[1][0], matrix[0][0]);
+//     }
+//     else
+//     {
+//         x = Math.atan2(-matrix[1][2], matrix[1][1]);
+//         y = Math.atan2(-matrix[2][0], sy);
+//         z = 0;
+//     }
+
+//     return [x, y, z];
+// }
+
+// function rotationMatrixToAngles(matrix)
+// {
+//     const x1 = Math.acos(matrix[1][1]);
+//     const y1 = Math.acos(matrix[0][0]);
+//     const x2 = Math.asin(matrix[2][1]);
+//     const y2 = Math.asin(matrix[0][2]);
+//     // console.log(`x1 : ${x1}\ny1 : ${y1}\nx2 : ${x2}\ny2 : ${y2}`);
+
+//     return [(x2 < 0)? -Math.PI - x2:x1, (y2 < 0)? -Math.PI - y2:y1, 0];
+// }
+
+// function rotationMatrixToAngles(matrix)
+// {
+//     return [
+//         Math.atan2(-matrix[2][0], matrix[0][0]),
+//         Math.atan2(matrix[1][2], matrix[0][0]),
+//         0
+//     ];
+// }
+
+function rotationMatrixToAngles(matrix)
+{
+    return [
+        Math.atan2(matrix[2][1], matrix[2][2]),
+        -Math.asin(matrix[2][0]),
+        Math.atan2(matrix[1][0], matrix[0][0])
+    ];
+}
+
+// function rotationMatrixToAngles(matrix)
+// {
+//     return [
+//         Math.atan2(matrix[2][1], matrix[1][1]),
+//         Math.atan2(matrix[0][2], matrix[0][0]),
+//         0
+//     ];
+// }
+
+// function rotationMatrixToAngles(matrix)
+// {
+//     const pitch = Math.atan2(-matrix[2][0], (matrix[0][0] ** 2 + matrix[1][0] ** 2) ** 0.5);
+//     return [
+//         pitch,
+//         Math.atan2(matrix[1][0] / Math.cos(pitch), matrix[0][0] / Math.cos(pitch)),
+//         Math.atan2(matrix[2] / Math.cos(pitch), matrix[2][2] / Math.cos(pitch))
+//     ];
+// }
+
+// function rotationMatrixToAngles(matrix)
+// {
+//     const t = matrix[0][0] + matrix[1][1] + matrix[2][2];
+//     const r = (1 + t) ** 0.5;
+//     const w = r / 2;
+//     const x = Math.sign(matrix[1][2] - matrix[2][1]) * Math.abs((1 + matrix[0][0] - matrix[1][1] - matrix[2][2]) ** 2 / 2);
+//     const y = Math.sign(matrix[2][0] - matrix[0][2]) * Math.abs((1 - matrix[0][0] + matrix[1][1] - matrix[2][2]) ** 2 / 2);
+//     const z = Math.sign(matrix[0][1] - matrix[1][0]) * Math.abs((1 - matrix[0][0] - matrix[1][1] + matrix[2][2]) ** 2 / 2);
+
+//     // console.log(Math.atan2((1 + 2 * (w * y - x * z)) ** 0.5, (1 - 2 * (w * y - x * z)) ** 0.5))
+//     // console.log(`w: ${w}\nx: ${x}\ny: ${y}\nz: ${z}`);
+//     // console.log(JSON.stringify([
+//     //     Math.atan2(2 * (w * x + y * z), 1 - 2 * (x ** 2 + y ** 2)),
+//     //     -Math.PI / 2 + 2 * Math.atan2((1 + 2 * (w * y - x * z)) ** 0.5, (1 - 2 * (w * y - x * z)) ** 0.5),
+//     //     Math.atan2(2 * (w * z + x * y), 1 - 2 * (y ** 2 + z ** 2))
+//     // ]))
+//     const ret = [
+//         Math.atan2(2 * (w * x + y * z), 1 - 2 * (x ** 2 + y ** 2)),
+//         -Math.PI / 2 + 2 * Math.atan2((1 + 2 * (w * y - x * z)) ** 0.5, (1 - 2 * (w * y - x * z)) ** 0.5),
+//         Math.atan2(2 * (w * z + x * y), 1 - 2 * (y ** 2 + z ** 2))
+//     ];
+//     console.log(JSON.stringify(ret.map((angle) => (angle == NaN)? 0:angle)));
+//     return ret.map((angle) => (!angle)? 0:angle);
+// }
+
+// function rotationMatrixToAngles(matrix)
+// {
+//     const xVector = math.multiply([0, 0, 1], matrix);
+//     const x = Math.atan2(xVector[1], xVector[2]);
+
+//     const yVector = math.multiply([1, 0, 0], matrix);
+//     const y = Math.atan2(-yVector[0], yVector[2]);
+
+//     const zVector = math.multiply([0, 1, 0], matrix);
+//     const z = Math.atan2(zVector[1], zVector[0]);
+    
+//     return [x, y, z];
+// }
+
+// function rotationMatrixToAngles(matrix)
+// {
+//     const theta = Math.acos((matrix[0][0] + matrix[1][1] + matrix[2][2] - 1) / 2)
+//     return [
+//         (matrix[2][1] - matrix[1][2]) / 2 * Math.sin(theta),
+//         (matrix[0][2] - matrix[2][0]) / 2 * Math.sin(theta),
+//         (matrix[1][0] - matrix[0][1]) / 2 * Math.sin(theta)
+//     ]
+// }
+
+// (cosa * cosb) - (sina * cosb) = cosa - sina
+// (cosa * sinb * sinc - sina * cosc) - (sina * sinb * sinc + cosa * cosc) = (cosa - sina)(sinb * sinc) - (sina + cosa)(cosc)
+// (cosa * sinb * sinc - sina * cosc) + (sina * sinb * cosc - cosa * sinc) = cosa * sinb * sinc - sina * cosc + sina * sinb * cosc - cosa * sinc = cosa * sinb * sinc + sina * sinb * cosc - sina * cosc - cosa * sinc
+//  = sinb * (cosa * sinc + sina * cosc) - sina * cosc - cosa * sinc
+//  = sinb * (cosa * sinc) + sinb * (sina * cosc) - sina * cosc - cosa * sinc
+//  = (sinb - 1)(cosa * sinc) + (sinb - 1)(sina * cosc)
+//  = (sinb - 1)(cosa * sinc + sina * cosc)
+// (cosa * sinb * cosc + sina * sinc) + (sina * sinb * sinc + cosa * cosc) = cosa * sinb * cosc + sina * sinc + sina * sinb * sinc + cosa * cosc
+//  = sinb * (cosa * cosc) + sina * sinc + sinb * (sina * sinc) + cosa * cosc
+//  = (sinb - 1)(cosa * cosc) + (sinb - 1)(sina * sinc)
+//  = (sinb - 1)(cosa * cosc + sina * sinc)
+// (sinb - 1)(cosa * sinc + sina * cosc) / (-sinb * -1 - 1) = cosa * sinc + sina * cosc
+// (sinb - 1)(cosa * cosc + sina * sinc) / (-sinb * -1 - 1) = cosa * cosc + sina * sinc
+// (cosa * sinc + sina * cosc) - (cosa * cosc + sina * sinc) = (cosa * sinc - cosa * cosc) + (sina * cosc - sina * sinc)
+//  = cosa * (sinc - cosc) + sina * (cosc - sinc)
+// (cosa * cosb) - (sina * cosb) = cosb * (cosa - sina)
+// (cosa * (sinc - cosc) + sina * (cosc - sinc)) / (cosb * (cosa - sina))
+//  = (cosa / (cosb * (cosa - sina)))(sinc - cosc) + (sina / (cosb * (cosa - sina)))(cosc - sinc)
+// (cosa / ((cosb * cosa) - (cosb * sina))) = 
+// (cosa * sinc) / (sina * cosc)
+// (cosb * cosc) / (sinb) = tan(b) * cosc / -sinb = -1 / cosb * cosc
 
 function round(value, precision=1)
 {
@@ -148,28 +289,80 @@ function round(value, precision=1)
 
 function roundRotationMatrix(matrix, precision=Math.PI / 2)
 {
-    const angles = anglesFromMatrix(matrix).map((angle) => round(angle, precision=precision));
-    return [[1, 0, 0], [0, 1, 0], [0, 0, 1]].reduce((sum, x, i) => math.multiply(sum, math.rotationMatrix(angles[i], x)), math.identity(3)._data).map((row) => row.map((value) => Math.round(value)));
+    const angles = rotationMatrixToAngles(matrix).map((angle) => round(angle, precision=precision));
+    return anglesToRotationMatrix(angles);
 }
 
-function matrixFromAngles(angles)
+// function anglesToRotationMatrix(angles)
+// {
+//     const [sina, sinb, sinc] = angles.map((angle) => Math.sin(angle));
+//     const [cosa, cosb, cosc] = angles.map((angle) => Math.cos(angle));
+//     return [
+//         [
+//             cosb * cosc,
+//             sina * sinb * cosc - cosa * sinc,
+//             cosa * sinb * cosc + sina * sinc
+//         ],
+//         [
+//             cosb * sinc,
+//             sina * sinb * sinc + cosa + cosc,
+//             cosa * sinb * sinc - sina * cosc
+//         ],
+//         [
+//             -sinb,
+//             sina * cosb,
+//             cosa * cosb
+//         ]
+//     ];
+// }
+
+// function anglesToRotationMatrix(angles)
+// {
+//     if (angles[2])
+//     {
+//         console.log(`Z angle of '${angles[2]}' was input to function 'anglesToRotationMatrix'`);
+//         return;
+//     }
+
+//     [sinx, siny] = angles.map((angle) => Math.sin(angle));
+//     [cosx, cosy] = angles.map((angle) => Math.cos(angle));
+    
+//     return [
+//         [cosy, 0, siny],
+//         [sinx * siny, cosx, sinx * -cosy],
+//         [-cosx * siny, sinx, cosx * cosy]
+//     ];
+// }
+
+function anglesToRotationMatrix(angles)
 {
-    return [[1, 0, 0], [0, 1, 0], [0, 0, 1]].reduce((sum, x, i) => math.multiply(sum, math.rotationMatrix(angles[i] * Math.PI / 180, x)), math.identity(3)._data);
+    const [sinc, sinb, sina] = angles.map((angle) => Math.sin(angle));
+    const [cosc, cosb, cosa] = angles.map((angle) => Math.cos(angle));
+
+    return [
+        [cosa * cosb, cosa * sinb * sinc - sina * cosc, cosa * sinb * cosc + sina * sinc],
+        [sina * cosb, sina * sinb * sinc + cosa * cosc, sina * sinb * cosc - cosa * sinc],
+        [-sinb, cosb * sinc, cosb * cosc]
+    ];
 }
 
 function sortLayers()
 {
     layers = Array(6 * cubeSize).fill().map(() => []);
-    let roundedMouseAngles = roundRotationMatrix(mouseAngles);
-    for (const sticker of stickers)
-    {
-        const stickerPosition = sticker.cornerPositions.map((cornerPosition) => math.multiply(cornerPosition, roundedMouseAngles));
-        const addToLayers = matchLayers(stickerPosition);
-        for (const addLayer of addToLayers)
-        {
-            layers[addLayer].push(sticker);
-        }
-    }
+    roundedMouseRotation = roundRotationMatrix(mouseRotation);
+    // console.log(JSON.stringify(rotationMatrixToAngles(roundedMouseRotation)));
+    // for (const sticker of stickers)
+    // {
+    //     const stickerPosition = sticker.cornerPositions.map((position) => multiplyRotationMatrix(roundedMouseRotation, position));
+    //     const addToLayers = matchLayers(stickerPosition);
+    //     for (const addLayer of addToLayers)
+    //     {
+    //         layers[addLayer].push(sticker);
+    //     }
+    // }
+    stickers.forEach((sticker) => {
+        sticker.updateLayers();
+    });
 }
 
 function turnLayer(layer)
@@ -183,93 +376,82 @@ function project(position)
     return [position[0] * scale, position[1] * scale];
 }
 
-// function matchLayers(cornerPos)
-// {
-//     let ret = [];
-//     let edgePos = cornerPos.reduce((sum, x) => sum.map((y, j) => (Math.max(Math.abs(x[j]), Math.abs(y)) == Math.abs(x[j]))? x[j]:y), [0, 0, 0]);
-//     for (let i = 0; i < 3; i++)
-//     {
-//         let outerLayer = newLayerPos.indexOf(((Math.sign(edgePos[i]) > 0)? "+":"-") + "xyz"[i]);
-//         let innerLayers = Math.abs(layerPos[outerLayer][i] - edgePos[i]) / tileSize;
-//         let layerIndex1 = Math.round(outerLayer + 6 * innerLayers);
-//         let layerIndex2 = Math.round((outerLayer + ((outerLayer % 2 == 0)? 1:-1)) + 6 * ((cubeSize - 1) - innerLayers));
-//         ret.push(layerIndex1, layerIndex2);
-//     }
-//     return ret;
-// }
-
 function matchLayers(cornerPositions)
 {
     const ret = [];
     for (let i = 0; i < 3; i++)
     {
-        //                                                               if position is more than previous maximum, return that, or just keep the current maximum
-        // const maxCoordinate = cornerPositions.reduce((currentMax, position) => ((Math.abs(position[i]) > Math.abs(currentMax))? position[i]:currentMax), 0);
         const maxCoordinate = cornerPositions.toSorted((position1, position2) => Math.abs(position2[i]) - Math.abs(position1[i]))[0][i];
-        const distanceFromEdge = (tileSize * cubeSize / 2 - Math.abs(maxCoordinate)) / tileSize;
-        // distanceFromEdge = 0;
-        // const distanceFromEdge = Math.floor(cubeSize / 2) + 0.5 - Math.abs(maxCoordinate) / tileSize;
-        const outerLayer1 = newLayerPos.indexOf(((Math.sign(maxCoordinate) > 0)? "+":"-") + "xyz"[i]);
-        const outerLayer2 = newLayerPos.indexOf(((Math.sign(maxCoordinate) > 0)? "-":"+") + "xyz"[i]);
-        // let baseLayer1, baseLayer2;
-
-        // if (Math.sign(maxCoordinate) != -1)
-        // {
-        //     baseLayer1 = [1, 2, 0][i] * 2;
-        //     baseLayer2 = [1, 2, 0][i] * 2 + 1;
-        // }
-        // else
-        // {
-        //     baseLayer1 = [1, 2, 0][i] * 2 + 1;
-        //     baseLayer2 = [1, 2, 0][i] * 2;
-        // }
-        // if (baseLayer1 + distanceFromEdge * 6 >= layers.length)
-        // {
-        //     console.log(layers.length)
-        //     console.log(cornerPositions);
-        // }
-        // console.log(ret)
+        // console.log(JSON.stringify(cornerPositions.map((position) => (Math.abs(position[i]) - tileSize * cubeSize / 2) / tileSize)));
+        // console.log(maxCoordinate / tileSize);
+        const distanceFromEdge = (cubeSize / 2 * tileSize - Math.abs(maxCoordinate)) / tileSize;
+        const currentAxis1 = [0, 0, 0].with(i, (maxCoordinate > 0)? 1:-1);
+        const currentAxis2 = math.multiply(-1, currentAxis1);
+        const outerLayer1 = layerAxes.findIndex((axis) => math.deepEqual(axis, currentAxis1));
+        const outerLayer2 = layerAxes.findIndex((axis) => math.deepEqual(axis, currentAxis2));
         ret.push(Math.round(outerLayer1 + distanceFromEdge * 6));
-        // ret.push(Math.round(outerLayer2 + (cubeSize - 1 - distanceFromEdge) * 6));
+        ret.push(Math.round(outerLayer2 + (cubeSize - 1 - distanceFromEdge) * 6));
     }
+    console.log(ret)
     return ret;
 }
-
-console.log(matchLayers([
-    [tileSize * -0.5, tileSize * -0.5, tileSize * 1.5],
-    [tileSize * -0.5, tileSize * 0.5, tileSize * 1.5],
-    [tileSize * 0.5, tileSize * -0.5, tileSize * 1.5],
-    [tileSize * 0.5, tileSize * 0.5, tileSize * 1.5]
-]));
 
 class Sticker
 {
     constructor(cornerPositions, color)
     {
         this.cornerPositions = cornerPositions;
-        this.color = color;
+        this.color = (color[3])? color:[...color, 1];
         this.updateLayers();
     }
 
-    get rotatedCornerPositions()
+    get globalCornerPositions()
     {
-        return this.cornerPositions.map((cornerPosition) => math.multiply(mouseAngles, cornerPosition));
+        return this.cornerPositions.map((position) => math.multiply(mouseRotation, position));
     }
 
-    get drawingCornerPositions()
+    set globalCornerPositions(value)
     {
-        return this.rotatedCornerPositions.map((cornerPosition) => project(cornerPosition));
+        const inversemouseRotation = math.inv(mouseRotation);
+        this.cornerPositions = value.map((position) => math.multiply(inversemouseRotation, position))
     }
 
-    updatePosition()
+    get approximateGlobalCornerPositions()
     {
-        this.averageZ = this.rotatedCornerPositions.reduce((sum, cornerPosition) => sum + cornerPosition[2], 0);
-        toDraw.push(this);
+        return this.cornerPositions.map((position) => math.multiply(roundedMouseRotation, position))
+    }
+    
+    set approximateGlobalCornerPositions(value)
+    {
+        const inverseroundedMouseRotation = math.inv(roundedMouseRotation);
+        this.cornerPositions = value.map((position) => math.multiply(inverseroundedMouseRotation, position));
+    }
+
+    get screenCornerPositions()
+    {
+        return this.globalCornerPositions.map((position) => project(position));
+    }
+
+    get averageZ()
+    {
+        return this.globalCornerPositions.reduce((sum, position) => sum + position[2], 0);
+    }
+
+    get stringColor()
+    {
+        return `rgba(${this.color[0]}, ${this.color[1]}, ${this.color[2]}, ${this.color[3]})`;
+    }
+
+    set stringColor(color)
+    {
+        const pattern = /rgba?\(([0-9]+)\s*,\s*([0-9]+)\s*,\s*([0-9]+)\s*(?:,\s*([0-9]+))?\)/;
+        this.color = color.match(pattern);
     }
 
     rotate(angle, axis)
     {
-        this.cornerPositions = this.cornerPositions.map((cornerPosition) => math.rotate(cornerPosition, angle, axis));
+        this.approximateGlobalCornerPositions = this.approximateGlobalCornerPositions.map((position) => math.rotate(position, angle, axis));
+        // this.cornerPositions = this.cornerPositions.map((cornerPosition) => math.multiply(math.rotationMatrix(angle, axis), cornerPosition))
         this.updateLayers();
     }
 
@@ -277,12 +459,14 @@ class Sticker
     {
         for (const layer of layers)
         {
-            if (layer.includes(this))
+            const index = layer.indexOf(this);
+            if (index != -1)
             {
-                layer.splice(layer.indexOf(this), 1);
+                layer.splice(index, 1);
             }
         }
-        matchLayers(this.cornerPositions).forEach((matchedLayer) => {
+        // console.log(JSON.stringify(this.cornerPositions.map((cornerPosition) => cornerPosition.map((coordinate) => coordinate / tileSize))));
+        matchLayers(this.approximateGlobalCornerPositions).forEach((matchedLayer) => {
             layers[matchedLayer].unshift(this);
         });
     }
@@ -295,12 +479,12 @@ function createCube()
         for (let j = 0; j < cubeSize * tileSize; j += tileSize)
         {
             let r = i + tileSize - offset, b = j + tileSize - offset, z1 = offset, z2 = -offset, l = i - offset; t = j - offset;
-            stickers.push(new Sticker([[t, l, z1], [t, r, z1], [b, r, z1], [b, l, z1]], "blue")); //b
-            stickers.push(new Sticker([[t, l, z2], [t, r, z2], [b, r, z2], [b, l, z2]], "green")); //f
-            stickers.push(new Sticker([[z1, t, l], [z1, t, r], [z1, b, r], [z1, b, l]], "red")); //r
-            stickers.push(new Sticker([[z2, t, l], [z2, t, r], [z2, b, r], [z2, b, l]], "orange")); //l
-            stickers.push(new Sticker([[l, z1, t], [r, z1, t], [r, z1, b], [l, z1, b]], "yellow")); //d
-            stickers.push(new Sticker([[l, z2, t], [r, z2, t], [r, z2, b], [l, z2, b]], "white")); //u
+            stickers.push(new Sticker([[t, l, z1], [t, r, z1], [b, r, z1], [b, l, z1]], [0, 0, 255, 255])); //b
+            stickers.push(new Sticker([[t, l, z2], [t, r, z2], [b, r, z2], [b, l, z2]], [0, 255, 0, 255])); //f
+            stickers.push(new Sticker([[z1, t, l], [z1, t, r], [z1, b, r], [z1, b, l]], [255, 0, 0, 255])); //r
+            stickers.push(new Sticker([[z2, t, l], [z2, t, r], [z2, b, r], [z2, b, l]], [255, 130, 0, 255])); //l
+            stickers.push(new Sticker([[l, z1, t], [r, z1, t], [r, z1, b], [l, z1, b]], [255, 255, 0, 255])); //d
+            stickers.push(new Sticker([[l, z2, t], [r, z2, t], [r, z2, b], [l, z2, b]], [255, 255, 255, 255])); //u
         }
     }
 }
@@ -317,21 +501,24 @@ function scramble()
 
 function drawShape(positions, color=null, stroke=true)
 {
-    ctx.beginPath();
+    context.beginPath();
+
     if (color)
     {
-        ctx.fillStyle = color;
+        context.fillStyle = color;
     }
-    ctx.moveTo(positions[0][0], positions[0][1]);
+
+    context.moveTo(positions[0][0], positions[0][1]);
     for (const position of positions.toSpliced(0, 1))
     {
-        ctx.lineTo(position[0], position[1]);
+        context.lineTo(position[0], position[1]);
     }
-    ctx.closePath();
-    ctx.fill();
+    context.closePath();
+
+    context.fill();
     if (stroke)
     {
-        ctx.stroke();
+        context.stroke();
     }
 }
 
@@ -339,16 +526,16 @@ createCube();
 
 function draw()
 {
-    ctx.lineWidth = 1;
-    ctx.fillStyle = "black";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    toDraw = [];
-    stickers.forEach((sticker) => {
-        sticker.updatePosition();
-    });
-    toDraw.sort((a, b) => b.averageZ - a.averageZ);
-    toDraw.forEach((sticker) => {
-        drawShape(sticker.drawingCornerPositions.map((cornerPosition) => math.add(cornerPosition, center)), sticker.color);
+    context.fillStyle = "black";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+
+    stickers.toSorted((a, b) => b.averageZ - a.averageZ).forEach((sticker) => {
+        // context.strokeStyle = (layers[2].includes(sticker))? "white":"black";
+        // context.lineWidth = (layers[2].includes(sticker))? 5:1;
+        // if (layers[2].includes(sticker))
+        // {
+        drawShape(sticker.screenCornerPositions.map((position) => math.add(position, center)), sticker.stringColor);   
+        // }
     });
     requestAnimationFrame(draw);
 }
