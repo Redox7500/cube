@@ -53,9 +53,13 @@ document.addEventListener("mousemove", (event) => {
     {
         const yRotationMatrix = math.rotationMatrix(-event.movementX * rotationSensitivity, [0, 1, 0]);
         const xRotationMatrix = math.rotationMatrix(event.movementY * rotationSensitivity, [1, 0, 0]);
+        
         mouseRotation = math.multiply(yRotationMatrix, xRotationMatrix, mouseRotation);
         roundedMouseRotation = roundRotationMatrix(mouseRotation);
-        sortLayers();
+        
+            stickers.forEach((sticker) => {
+            sticker.updateLayers();
+        });
     }
 });
 document.addEventListener("wheel", (event) => {
@@ -210,13 +214,6 @@ function anglesToRotationMatrix(angles)
     ];
 }
 
-function sortLayers()
-{
-    stickers.forEach((sticker) => {
-        sticker.updateLayers();
-    });
-}
-
 function turnLayer(layer)
 {
     layers[layer].forEach((sticker) => sticker.rotate(changeAngle, layerAxes[layer % 6]));
@@ -366,14 +363,11 @@ class Sticker
 
 function createCube()
 {
-    // for (let i = 0; i < cubeSize * tileSize; i += tileSize)
     for (let i = 0; i < cubeSize; i++)
     {
-        // for (let j = 0; j < cubeSize * tileSize; j += tileSize)
         for (let j = 0; j < cubeSize; j++)
         {
             let r = tileSize * (i + 1 - cubeSize / 2), b = tileSize * (j + 1 - cubeSize / 2), z1 = tileSize * cubeSize / 2, z2 = -tileSize * cubeSize / 2, l = tileSize * (i - cubeSize / 2), t = tileSize * (j - cubeSize / 2);
-            // let r = i + tileSize - tileSize * cubeSize / 2, b = j + tileSize - tileSize * cubeSize / 2, z1 = tileSize * cubeSize / 2, z2 = -tileSize * cubeSize / 2, l = i - tileSize * cubeSize / 2; t = j - tileSize * cubeSize / 2;
             stickers.push(new Sticker([[t, l, z1], [t, r, z1], [b, r, z1], [b, l, z1]], [0, 0, 255, 255])); //b
             stickers.push(new Sticker([[t, l, z2], [t, r, z2], [b, r, z2], [b, l, z2]], [0, 255, 0, 255])); //f
             stickers.push(new Sticker([[z1, t, l], [z1, t, r], [z1, b, r], [z1, b, l]], [255, 0, 0, 255])); //r
@@ -439,12 +433,6 @@ function draw()
     context.fillRect(0, 0, canvas.width, canvas.height);
 
     stickers.toSorted((a, b) => b.averageZ - a.averageZ).forEach((sticker) => {
-        // sticker.screenCornerPositions.forEach((position) => {
-        //     if (position[0] < 0 || position[0] > canvas.width || position[1] < 0 || position[1] > canvas.height)
-        //     {
-        //         console.log(position);
-        //     }
-        // });
         drawPolygon(sticker.screenCornerPositions, sticker.stringColor);
     });
 
