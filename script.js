@@ -1,9 +1,29 @@
+// canvas initialization
 const canvas = document.getElementById("canvas");
 const context = canvas.getContext("2d");
-context.strokeStyle = "black";
 canvas.width = window.innerWidth;
 canvas.height = window.innerHeight;
-let colors = [];
+context.strokeStyle = "black";
+
+// cube parameters
+let cubeSize = 3;
+let tileSize = 100;
+let scrambleLengths = [0, 10, 20, 40, 60, 80, 100];
+
+// cube distance from camera
+let cubeOffset = [0, 0, 1100];
+
+// arrays for all stickers and all layers
+let stickers = [];
+let layers = Array(6 * cubeSize).fill().map(() => []);
+
+// corresponding rotation axis and key for each layer
+let layerAxes = [[0, 0, 1], [0, 0, -1], [1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0]];
+let layerKeys = ["KeyB", "KeyF", "KeyR", "KeyL", "KeyD", "KeyU"];
+
+let numberKeys = [];
+let changeAngle = -Math.PI / 2;
+
 let mouseRotation = [
     [1, 0, 0],
     [0, 1, 0],
@@ -14,28 +34,21 @@ let roundedMouseRotation = [
     [0, 1, 0],
     [0, 0, 1]
 ];
-let cubeSize = 3;
-let tileSize = 100;
-let offset = tileSize * cubeSize / 2;
-let focalLength = 1000;
-let distance = 1100;
-let stickers = [];
-let layers = Array(6 * cubeSize).fill().map(() => []);
-let center = [canvas.width / 2, canvas.height / 2];
-let changeAngle = -Math.PI / 2;
-let numberKey = 0;
-let layerAxes = [[0, 0, 1], [0, 0, -1], [1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0]];
-let scrambleLengths = [0, 10, 20, 40, 60, 80, 100];
-let zoom = 1;
-let mousePosition = [0, 0];
 let rotationSensitivity = 0.01;
+
+let zoom = 1;
+let zoomSensitivity = 0.01;
+let minZoom = 0.01;
+let maxZoom = 100;
+
+let projectionMatrix = createProjectionMatrix(Math.PI / 4, canvas.width / canvas.height, 0.1, 100);
 
 function clamp(x, min, max)
 {
     return Math.max(Math.min(x, max), min);
 }
 
-document.onmousemove = (event) => {
+document.addEventListener("mousemove", (event) => {
     if (document.pointerLockElement)
     {
         const yRotationMatrix = math.rotationMatrix(-event.movementX * rotationSensitivity, [0, 1, 0]);
@@ -44,55 +57,65 @@ document.onmousemove = (event) => {
         roundedMouseRotation = roundRotationMatrix(mouseRotation);
         sortLayers();
     }
-    else
-    {
-        mousePosition = [event.clientX, event.clientY];
-    }
-};
-document.onwheel = (event) => {
-    zoom += event.deltaY / 1800;
-    zoom = Math.min(Math.max(0, zoom), 200);
-};
+});
+document.addEventListener("wheel", (event) => {
+    zoom = clamp(zoom + event.deltaY * zoomSensitivity, minZoom, maxZoom);
+});
 
-document.onkeydown = (event) => {
-    switch (event.key.toLowerCase())
+document.addEventListener("keydown", (event) => {
+    switch (event.code)
     {
-        case "shift":
+        case "ShiftLeft":
+        case "ShiftRight":
             changeAngle = Math.PI / 2;
+
             break;
-        case "1":
-        case "2":
-        case "3":
-        case "4":
-        case "5":
-        case "6":
-        case "7":
-        case "8":
-        case "9":
-            numberKey = event.key;
+
+        case "Digit0":
+        case "Digit1":
+        case "Digit2":
+        case "Digit3":
+        case "Digit4":
+        case "Digit5":
+        case "Digit6":
+        case "Digit7":
+        case "Digit8":
+        case "Digit9":
+            const intKey = parseInt(event.code[5]);
+            if (!numberKeys.includes(intKey))
+            {
+                numberKeys.push(intKey);
+            }
+
             break;
-        case "b":
-            turnLayer(0 + 6 * numberKey);
+
+        case "KeyB":
+        case "KeyF":
+        case "KeyR":
+        case "KeyL":
+        case "KeyD":
+        case "KeyU":
+            const layerIndex = layerKeys.indexOf(event.code);
+            if (numberKeys.length == 0)
+            {
+                turnLayer(layerIndex);
+            }
+            else
+            {
+                for (let numberKey of numberKeys)
+                {
+                    turnLayer(layerIndex + 6 * numberKey);   
+                }
+            }
+
             break;
-        case "f":
-            turnLayer(1 + 6 * numberKey);
-            break;
-        case "r":
-            turnLayer(2 + 6 * numberKey);
-            break;
-        case "l":
-            turnLayer(3 + 6 * numberKey);
-            break;
-        case "d":
-            turnLayer(4 + 6 * numberKey);
-            break;
-        case "u":
-            turnLayer(5 + 6 * numberKey);
-            break;
-        case "enter":
+
+        case "Enter":
             scramble();
+
             break;
-        case " ":
+
+        case "Space":
             if (!document.pointerLockElement)
             {
                 canvas.requestPointerLock();
@@ -101,38 +124,34 @@ document.onkeydown = (event) => {
             {
                 document.exitPointerLock();
             }
+
             break;
     }
-};
-document.onkeyup = (event) => {
-    switch (event.key.toLowerCase())
+});
+document.addEventListener("keyup", (event) => {
+    switch (event.code)
     {
-        case "shift":
+        case "ShiftLeft":
+        case "ShiftRight":
             changeAngle = -Math.PI / 2;
+
             break;
-        case "1":
-        case "2":
-        case "3":
-        case "4":
-        case "5":
-        case "6":
-        case "7":
-        case "8":
-        case "9":
-            numberKey = 0;
+
+        case "Digit0":
+        case "Digit1":
+        case "Digit2":
+        case "Digit3":
+        case "Digit4":
+        case "Digit5":
+        case "Digit6":
+        case "Digit7":
+        case "Digit8":
+        case "Digit9":
+            numberKeys.splice(numberKeys.indexOf(parseInt(event.key)), 1);
+            
             break;
     }
-};
-
-function normalizeVector(vector)
-{
-    return math.divide(vector, math.norm(vector));
-}
-
-function multiplyRotationMatrix(matrix, vector)
-{
-    return math.multiply(matrix, vector);
-}
+});
 
 // function rotationMatrixToAngles(matrix)
 // {
@@ -187,13 +206,12 @@ function anglesToRotationMatrix(angles)
     return [
         [cosa * cosb, cosa * sinb * sinc - sina * cosc, cosa * sinb * cosc + sina * sinc],
         [sina * cosb, sina * sinb * sinc + cosa * cosc, sina * sinb * cosc - cosa * sinc],
-        [-sinb, cosb * sinc, cosb * cosc]
+        [-sinb,       cosb * sinc,                      cosb * cosc]
     ];
 }
 
 function sortLayers()
 {
-    layers = Array(6 * cubeSize).fill().map(() => []);
     stickers.forEach((sticker) => {
         sticker.updateLayers();
     });
@@ -204,10 +222,44 @@ function turnLayer(layer)
     layers[layer].forEach((sticker) => sticker.rotate(changeAngle, layerAxes[layer % 6]));
 }
 
-function project(position)
+function createProjectionMatrix(fov, aspect, near, far)
 {
-    let scale = focalLength / (position[2] + distance) / zoom;
-    return [position[0] * scale, position[1] * scale];
+    const f = 1 / Math.tan(fov / 2);
+    return [
+        [f / aspect, 0, 0,                           0],
+        [0,          f, 0,                           0],
+        [0,          0, (far + near) / (near - far), (2 * far * near) / (near - far)],
+        [0,          0, -1,                          0]
+    ];
+}
+
+function clipSpaceToScreenSpace(coordinates, near, far)
+{
+    const ndcX = coordinates[0] / coordinates[3];
+    const ndcY = coordinates[1] / coordinates[3];
+    const ndcZ = coordinates[2] / coordinates[3];
+
+    return [
+        (-ndcX + 1) / 2 * canvas.width,
+        (-ndcY + 1) / 2 * canvas.height,
+        (ndcZ + 1) * (far - near) + near
+    ];
+}
+
+function project(position, projectionMatrix)
+{
+    const near = projectionMatrix[2][2] / (projectionMatrix[2][3] - 1);
+    const far = projectionMatrix[2][2] / (projectionMatrix[2][3] + 1);
+
+    const clipSpaceCoordinates = math.multiply(projectionMatrix, [...position, 1]);
+    const screenSpaceCoordinates = clipSpaceToScreenSpace(clipSpaceCoordinates);
+
+    const drawCoordinates = screenSpaceCoordinates.slice(0, -1);
+    const offsetDrawCoordinates = math.subtract(drawCoordinates, [canvas.width / 2, canvas.height / 2]);
+    const zoomedOffsetDrawCoordinates = math.multiply(offsetDrawCoordinates, zoom);
+    const zoomedDrawCoordinates = math.add(zoomedOffsetDrawCoordinates, [canvas.width / 2, canvas.height / 2]);
+
+    return zoomedDrawCoordinates;
 }
 
 function matchLayers(cornerPositions)
@@ -246,8 +298,8 @@ class Sticker
 
     set globalCornerPositions(value)
     {
-        const inversemouseRotation = math.inv(mouseRotation);
-        this.cornerPositions = value.map((position) => math.multiply(inversemouseRotation, position))
+        const inverseMouseRotation = math.inv(mouseRotation);
+        this.cornerPositions = value.map((position) => math.multiply(inverseMouseRotation, position))
     }
 
     get approximateGlobalCornerPositions()
@@ -257,13 +309,13 @@ class Sticker
     
     set approximateGlobalCornerPositions(value)
     {
-        const inverseroundedMouseRotation = math.inv(roundedMouseRotation);
-        this.cornerPositions = value.map((position) => math.multiply(inverseroundedMouseRotation, position));
+        const inverseRoundedMouseRotation = math.inv(roundedMouseRotation);
+        this.cornerPositions = value.map((position) => math.multiply(inverseRoundedMouseRotation, position));
     }
 
     get screenCornerPositions()
     {
-        return this.globalCornerPositions.map((position) => project(position));
+        return this.globalCornerPositions.map((position) => project(math.add(position, cubeOffset), projectionMatrix));
     }
 
     get averageZ()
@@ -290,31 +342,42 @@ class Sticker
 
     updateLayers()
     {
-        for (const layer of layers)
+        const addToLayers = matchLayers(this.approximateGlobalCornerPositions);
+        for (let i = 0; i < layers.length; i++)
         {
-            const index = layer.indexOf(this);
-            if (index != -1)
+            const index = layers[i].indexOf(this);
+            if (addToLayers.includes(i))
             {
-                layer.splice(index, 1);
+                if (index == -1)
+                {
+                    layers[i].unshift(this);
+                }
+            }
+            else
+            {
+                if (index != -1)
+                {
+                    layers[i].splice(index, 1);
+                }
             }
         }
-        matchLayers(this.approximateGlobalCornerPositions).forEach((matchedLayer) => {
-            layers[matchedLayer].unshift(this);
-        });
     }
 }
 
 function createCube()
 {
-    for (let i = 0; i < cubeSize * tileSize; i += tileSize)
+    // for (let i = 0; i < cubeSize * tileSize; i += tileSize)
+    for (let i = 0; i < cubeSize; i++)
     {
-        for (let j = 0; j < cubeSize * tileSize; j += tileSize)
+        // for (let j = 0; j < cubeSize * tileSize; j += tileSize)
+        for (let j = 0; j < cubeSize; j++)
         {
-            let r = i + tileSize - offset, b = j + tileSize - offset, z1 = offset, z2 = -offset, l = i - offset; t = j - offset;
+            let r = tileSize * (i + 1 - cubeSize / 2), b = tileSize * (j + 1 - cubeSize / 2), z1 = tileSize * cubeSize / 2, z2 = -tileSize * cubeSize / 2, l = tileSize * (i - cubeSize / 2), t = tileSize * (j - cubeSize / 2);
+            // let r = i + tileSize - tileSize * cubeSize / 2, b = j + tileSize - tileSize * cubeSize / 2, z1 = tileSize * cubeSize / 2, z2 = -tileSize * cubeSize / 2, l = i - tileSize * cubeSize / 2; t = j - tileSize * cubeSize / 2;
             stickers.push(new Sticker([[t, l, z1], [t, r, z1], [b, r, z1], [b, l, z1]], [0, 0, 255, 255])); //b
             stickers.push(new Sticker([[t, l, z2], [t, r, z2], [b, r, z2], [b, l, z2]], [0, 255, 0, 255])); //f
             stickers.push(new Sticker([[z1, t, l], [z1, t, r], [z1, b, r], [z1, b, l]], [255, 0, 0, 255])); //r
-            stickers.push(new Sticker([[z2, t, l], [z2, t, r], [z2, b, r], [z2, b, l]], [255, 130, 0, 255])); //l
+            stickers.push(new Sticker([[z2, t, l], [z2, t, r], [z2, b, r], [z2, b, l]], [255, 140, 0, 255])); //l
             stickers.push(new Sticker([[l, z1, t], [r, z1, t], [r, z1, b], [l, z1, b]], [255, 255, 0, 255])); //d
             stickers.push(new Sticker([[l, z2, t], [r, z2, t], [r, z2, b], [l, z2, b]], [255, 255, 255, 255])); //u
         }
@@ -345,7 +408,7 @@ function scramble()
     changeAngle = previousChangeAngle;
 }
 
-function drawShape(positions, color=null, stroke=true)
+function drawPolygon(points, color=null, stroke=true)
 {
     context.beginPath();
 
@@ -354,8 +417,8 @@ function drawShape(positions, color=null, stroke=true)
         context.fillStyle = color;
     }
 
-    context.moveTo(positions[0][0], positions[0][1]);
-    for (const position of positions.toSpliced(0, 1))
+    context.moveTo(points[0][0], points[0][1]);
+    for (const position of points.toSpliced(0, 1))
     {
         context.lineTo(position[0], position[1]);
     }
@@ -376,7 +439,13 @@ function draw()
     context.fillRect(0, 0, canvas.width, canvas.height);
 
     stickers.toSorted((a, b) => b.averageZ - a.averageZ).forEach((sticker) => {
-        drawShape(sticker.screenCornerPositions.map((position) => math.add(position, center)), sticker.stringColor);
+        // sticker.screenCornerPositions.forEach((position) => {
+        //     if (position[0] < 0 || position[0] > canvas.width || position[1] < 0 || position[1] > canvas.height)
+        //     {
+        //         console.log(position);
+        //     }
+        // });
+        drawPolygon(sticker.screenCornerPositions, sticker.stringColor);
     });
 
     requestAnimationFrame(draw);
